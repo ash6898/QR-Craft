@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <style name="Theme.App.Starting" parent="Theme.SplashScreen">
+        <item name="android:windowBackground">@color/on_surface</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/ph_qr_code_bold</item>
+        <item name="postSplashScreenTheme">@style/Theme.QRCraft</item>
+    </style>
+</resources>
