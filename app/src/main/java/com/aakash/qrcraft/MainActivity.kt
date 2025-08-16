@@ -1,24 +1,47 @@
 package com.aakash.qrcraft
 
-import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Bundle
+import android.util.Size
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.camera.core.CameraSelector
+import androidx.camera.core.ImageAnalysis
+import androidx.camera.core.Preview
+import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.view.PreviewView
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.content.ContextCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.aakash.qrcraft.ui.QrCodeAnalyzer
 import com.aakash.qrcraft.ui.theme.QRCraftTheme
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+
 
 class MainActivity : ComponentActivity() {
 
@@ -32,35 +55,105 @@ class MainActivity : ComponentActivity() {
 
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+
+        CoroutineScope(Dispatchers.Main).launch {
+            delay(5000L) // 5 seconds in delay
+            keepSplashScreen = false
+        }
+
         setContent {
             QRCraftTheme {
-                Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    Greeting(
-                        name = "Android",
-                        modifier = Modifier.padding(innerPadding)
+
+                var code by remember {
+                    mutableStateOf("")
+                }
+                val context = LocalContext.current
+                val lifeCycleOwner = LocalLifecycleOwner.current
+                val cameraProviderFuture = remember {
+                    ProcessCameraProvider.getInstance(context)
+                }
+                var hasCamPermission by remember {
+                    mutableStateOf(
+                        ContextCompat.checkSelfPermission(
+                            context,
+                            android.Manifest.permission.CAMERA
+                        ) == PackageManager.PERMISSION_GRANTED
                     )
+                }
+                val launcher = rememberLauncherForActivityResult(
+                    contract = ActivityResultContracts.RequestPermission(),
+                    onResult = { granted ->
+                        hasCamPermission = granted
+                    }
+                )
+                LaunchedEffect(key1 = true) {
+                    launcher.launch(android.Manifest.permission.CAMERA)
+                }
+                Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(innerPadding),
+                        verticalArrangement = Arrangement.Center,
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        if (hasCamPermission) {
+                            AndroidView(factory = { context ->
+                                val previewView = PreviewView(context)
+                                val preview = Preview.Builder().build()
+                                val selector = CameraSelector.Builder()
+                                    .requireLensFacing(CameraSelector.LENS_FACING_BACK)
+                                    .build()
+                                preview.setSurfaceProvider(previewView.surfaceProvider)
+                                val imageAnalysis = ImageAnalysis.Builder()
+                                    .setTargetResolution(
+                                        Size(
+                                            previewView.width,
+                                            previewView.height
+                                        )
+                                    )
+                                    .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                                    .build()
+                                imageAnalysis.setAnalyzer(
+                                    ContextCompat.getMainExecutor(context),
+                                    QrCodeAnalyzer { result ->
+                                        code = result
+                                    }
+                                )
+
+                                try {
+                                    cameraProviderFuture.get().bindToLifecycle(
+                                        lifeCycleOwner,
+                                        selector,
+                                        preview,
+                                        imageAnalysis
+                                    )
+                                } catch (e: Exception) {
+                                    e.printStackTrace()
+                                }
+                                previewView
+                            }, modifier = Modifier.weight(1f))
+                            Text(
+                                text = code,
+                                fontSize = 20.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(32.dp)
+                            )
+                        } else {
+                            Text(
+                                text = "Camera permission not granted",
+                                fontSize = 20.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(32.dp)
+                            )
+                        }
+                    }
                 }
             }
         }
-        CoroutineScope(Dispatchers.Main).launch {
-            delay(5000L) // 5 seconds in debug mode
-            keepSplashScreen = false
-        }
-    }
-}
-
-@Composable
-fun Greeting(name: String, modifier: Modifier = Modifier) {
-    Text(
-        text = "Hello $name!",
-        modifier = modifier
-    )
-}
-
-@Preview(showBackground = true)
-@Composable
-fun GreetingPreview() {
-    QRCraftTheme {
-        Greeting("Android")
     }
 }
